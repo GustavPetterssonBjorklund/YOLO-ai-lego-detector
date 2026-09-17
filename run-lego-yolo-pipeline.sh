@@ -7,6 +7,7 @@ PROJECT_ROOT="$(cd -- "$PROJECT_ROOT" && pwd)"
 ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-$PROJECT_ROOT/artifacts}"
 EXPORT_ROOT="${EXPORT_ROOT:-$ARTIFACTS_ROOT/exports}"
 EXPORT_SCRIPT="${EXPORT_SCRIPT:-$SCRIPT_DIR/export-cvat-dataset.sh}"
+INSTALL_SCRIPT="${INSTALL_SCRIPT:-$SCRIPT_DIR/install.sh}"
 PREPARE_DATASET_SCRIPT="${PREPARE_DATASET_SCRIPT:-$SCRIPT_DIR/scripts/prepare_yolo_dataset.py}"
 REPORT_ACCELERATOR_SCRIPT="${REPORT_ACCELERATOR_SCRIPT:-$SCRIPT_DIR/scripts/report_accelerator.py}"
 SOURCE_DATASET="${SOURCE_DATASET:-$EXPORT_ROOT/latest}"
@@ -38,6 +39,22 @@ for command_name in python3 cp; do
     fi
 done
 
+for helper_script in \
+    "$INSTALL_SCRIPT" \
+    "$PREPARE_DATASET_SCRIPT" \
+    "$REPORT_ACCELERATOR_SCRIPT"; do
+    if [[ ! -f "$helper_script" ]]; then
+        printf 'Error: required helper script not found: %s\n' "$helper_script" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -x "$YOLO_VENV/bin/python" \
+    || ! -x "$YOLO_VENV/bin/yolo" \
+    || ! -x "$YOLO_VENV/bin/cvat-cli" ]]; then
+    YOLO_VENV="$YOLO_VENV" "$INSTALL_SCRIPT"
+fi
+
 while true; do
     read -rp 'Export a fresh dataset from CVAT first? [y/n]: ' answer
     case "${answer,,}" in
@@ -49,6 +66,7 @@ while true; do
             PROJECT_ROOT="$PROJECT_ROOT" \
                 ARTIFACTS_ROOT="$ARTIFACTS_ROOT" \
                 OUTPUT_ROOT="$EXPORT_ROOT" \
+                CVAT_CLI="$YOLO_VENV/bin/cvat-cli" \
                 "$EXPORT_SCRIPT"
             break
             ;;
@@ -67,13 +85,6 @@ if [[ ! -d "$SOURCE_DATASET/images/train" || ! -d "$SOURCE_DATASET/labels/train"
     exit 1
 fi
 
-for helper_script in "$PREPARE_DATASET_SCRIPT" "$REPORT_ACCELERATOR_SCRIPT"; do
-    if [[ ! -f "$helper_script" ]]; then
-        printf 'Error: required helper script not found: %s\n' "$helper_script" >&2
-        exit 1
-    fi
-done
-
 timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
 dataset_dir="$TRAINING_ROOT/lego-$timestamp"
 run_name="lego-$timestamp"
@@ -86,16 +97,6 @@ python3 "$PREPARE_DATASET_SCRIPT" \
     "$dataset_dir" \
     --val-fraction "$VAL_FRACTION" \
     --seed "$SPLIT_SEED"
-
-if [[ ! -x "$YOLO_VENV/bin/python" ]]; then
-    printf 'Creating YOLO virtual environment at %s...\n' "$YOLO_VENV"
-    python3 -m venv "$YOLO_VENV"
-    "$YOLO_VENV/bin/python" -m pip install --upgrade pip
-    "$YOLO_VENV/bin/python" -m pip install ultralytics
-elif [[ ! -x "$YOLO_VENV/bin/yolo" ]]; then
-    printf 'Installing Ultralytics in the existing YOLO environment...\n'
-    "$YOLO_VENV/bin/python" -m pip install ultralytics
-fi
 
 printf 'Checking accelerator availability...\n'
 "$YOLO_VENV/bin/python" "$REPORT_ACCELERATOR_SCRIPT"

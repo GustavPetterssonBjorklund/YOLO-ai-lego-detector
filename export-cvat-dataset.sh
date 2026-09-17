@@ -7,6 +7,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_DIR}"
 PROJECT_ROOT="$(cd -- "$PROJECT_ROOT" && pwd)"
 ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-$PROJECT_ROOT/artifacts}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-$ARTIFACTS_ROOT/exports}"
+CVAT_CLI="${CVAT_CLI:-$PROJECT_ROOT/.venv/bin/cvat-cli}"
 CVAT_URL="${CVAT_URL:-https://cvat.spetsen.se}"
 CVAT_USERNAME="${CVAT_USERNAME:-gustav.pettersson.bjorklund}"
 CVAT_ORG="${CVAT_ORG:-Hitachigym}"
@@ -16,12 +17,15 @@ CVAT_FORMAT="${CVAT_FORMAT:-Ultralytics YOLO Detection 1.0}"
 # Make all relative overrides deterministic and repository-relative.
 cd "$PROJECT_ROOT"
 
-for command_name in cvat-cli unzip; do
-    if ! command -v "$command_name" >/dev/null 2>&1; then
-        printf 'Error: required command not found: %s\n' "$command_name" >&2
-        exit 1
-    fi
-done
+if [[ ! -x "$CVAT_CLI" ]]; then
+    printf 'Error: CVAT CLI not found at %s\n' "$CVAT_CLI" >&2
+    printf 'Run %s/install.sh first.\n' "$PROJECT_ROOT" >&2
+    exit 1
+fi
+if ! command -v unzip >/dev/null 2>&1; then
+    printf 'Error: required command not found: unzip\n' >&2
+    exit 1
+fi
 
 # A CVAT access token is preferred. If none is available, prompt once for the
 # CVAT password and let cvat-cli read it from PASS.
@@ -41,7 +45,7 @@ archive_path="${archive_dir}/lego-dataset-${timestamp}.zip"
 mkdir -p "$archive_dir" "$datasets_dir" "$dataset_dir"
 
 printf 'Exporting CVAT project %s...\n' "$CVAT_PROJECT_ID"
-cvat-cli \
+"$CVAT_CLI" \
     --server-host "$CVAT_URL" \
     --auth "$CVAT_USERNAME" \
     --org "$CVAT_ORG" \
