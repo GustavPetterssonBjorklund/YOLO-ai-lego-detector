@@ -1,0 +1,6 @@
+dataset-*/
+archives/
+latest
+weights/
+yolo26n.pt
+
