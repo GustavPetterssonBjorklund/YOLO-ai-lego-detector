@@ -3,4 +3,5 @@ archives/
 latest
 weights/
 yolo26n.pt
-
+__pycache__/
+*.py[cod]
