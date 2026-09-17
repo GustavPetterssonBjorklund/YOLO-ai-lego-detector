@@ -1,2 +1,4 @@
 ultralytics
 cvat-cli
+fastapi
+uvicorn
