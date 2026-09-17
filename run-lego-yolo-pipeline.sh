@@ -3,17 +3,20 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_DIR}"
-EXPORT_DIR="${EXPORT_DIR:-$SCRIPT_DIR}"
-EXPORT_SCRIPT="${EXPORT_SCRIPT:-$EXPORT_DIR/export-cvat-dataset.sh}"
+PROJECT_ROOT="$(cd -- "$PROJECT_ROOT" && pwd)"
+ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-$PROJECT_ROOT/artifacts}"
+EXPORT_ROOT="${EXPORT_ROOT:-$ARTIFACTS_ROOT/exports}"
+EXPORT_SCRIPT="${EXPORT_SCRIPT:-$SCRIPT_DIR/export-cvat-dataset.sh}"
 PREPARE_DATASET_SCRIPT="${PREPARE_DATASET_SCRIPT:-$SCRIPT_DIR/scripts/prepare_yolo_dataset.py}"
 REPORT_ACCELERATOR_SCRIPT="${REPORT_ACCELERATOR_SCRIPT:-$SCRIPT_DIR/scripts/report_accelerator.py}"
-SOURCE_DATASET="${SOURCE_DATASET:-$EXPORT_DIR/latest}"
-TRAINING_ROOT="${TRAINING_ROOT:-$PROJECT_ROOT/training-data}"
-RUNS_ROOT="${RUNS_ROOT:-$PROJECT_ROOT/runs}"
-PREDICTIONS_ROOT="${PREDICTIONS_ROOT:-$PROJECT_ROOT/predictions}"
-YOLO_VENV="${YOLO_VENV:-$PROJECT_ROOT/yolo-venv}"
+SOURCE_DATASET="${SOURCE_DATASET:-$EXPORT_ROOT/latest}"
+TRAINING_ROOT="${TRAINING_ROOT:-$ARTIFACTS_ROOT/training-data}"
+RUNS_ROOT="${RUNS_ROOT:-$ARTIFACTS_ROOT/runs}"
+PREDICTIONS_ROOT="${PREDICTIONS_ROOT:-$ARTIFACTS_ROOT/predictions}"
+WEIGHTS_ROOT="${WEIGHTS_ROOT:-$ARTIFACTS_ROOT/weights}"
+YOLO_VENV="${YOLO_VENV:-$PROJECT_ROOT/.venv}"
 
-MODEL="${MODEL:-yolo26n.pt}"
+MODEL="${MODEL:-$WEIGHTS_ROOT/yolo26n.pt}"
 EPOCHS="${EPOCHS:-150}"
 IMGSZ="${IMGSZ:-640}"
 BATCH="${BATCH:--1}"
@@ -24,7 +27,11 @@ CACHE="${CACHE:-False}"
 VAL_FRACTION="${VAL_FRACTION:-0.20}"
 SPLIT_SEED="${SPLIT_SEED:-42}"
 
-for command_name in python3 cp find; do
+# Keep relative paths and third-party downloads anchored to this repository,
+# regardless of the directory from which the script was launched.
+cd "$PROJECT_ROOT"
+
+for command_name in python3 cp; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         printf 'Error: required command not found: %s\n' "$command_name" >&2
         exit 1
@@ -39,7 +46,10 @@ while true; do
                 printf 'Error: export script is missing or not executable: %s\n' "$EXPORT_SCRIPT" >&2
                 exit 1
             fi
-            OUTPUT_ROOT="$EXPORT_DIR" "$EXPORT_SCRIPT"
+            PROJECT_ROOT="$PROJECT_ROOT" \
+                ARTIFACTS_ROOT="$ARTIFACTS_ROOT" \
+                OUTPUT_ROOT="$EXPORT_ROOT" \
+                "$EXPORT_SCRIPT"
             break
             ;;
         n|no)
@@ -68,7 +78,7 @@ timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
 dataset_dir="$TRAINING_ROOT/lego-$timestamp"
 run_name="lego-$timestamp"
 
-mkdir -p "$TRAINING_ROOT" "$RUNS_ROOT" "$PREDICTIONS_ROOT"
+mkdir -p "$TRAINING_ROOT" "$RUNS_ROOT" "$PREDICTIONS_ROOT" "$WEIGHTS_ROOT"
 cp -aL "$SOURCE_DATASET" "$dataset_dir"
 
 printf 'Creating a class-preserving train/validation split...\n'

@@ -1,7 +1,4 @@
-dataset-*/
-archives/
-latest
-weights/
-yolo26n.pt
+artifacts/
+.venv/
 __pycache__/
 *.py[cod]
