@@ -214,6 +214,25 @@ def add_header(image: Any, title: str) -> Any:
     return np.vstack((header, image))
 
 
+def add_filename_header(image: Any, filename: str) -> Any:
+    import cv2
+    import numpy as np
+
+    header_height = 46
+    header = np.full((header_height, image.shape[1], 3), 20, dtype=image.dtype)
+    cv2.putText(
+        header,
+        f"IMAGE: {filename}",
+        (12, 31),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.75,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    return np.vstack((header, image))
+
+
 def find_images(dataset: Path) -> list[tuple[str, Path]]:
     images: list[tuple[str, Path]] = []
     for split in ("train", "val"):
@@ -290,6 +309,7 @@ def run(args: argparse.Namespace) -> None:
             f"MODEL OUTPUT - {len(extra)} UNLABELLED IN RED",
         )
         comparison = np.hstack((ground_truth, model_output))
+        comparison = add_filename_header(comparison, f"{split}/{relative_path}")
         destination = args.output / split / relative_path.with_suffix(".jpg")
         destination.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(destination), comparison):
