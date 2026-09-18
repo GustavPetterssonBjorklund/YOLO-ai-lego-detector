@@ -1,6 +1,10 @@
+import csv
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.compare_missed_detections import Box, intersection_over_union
+from scripts.compare_missed_detections import load_provenance, provenance_for_image
 from scripts.compare_missed_detections import missed_ground_truth_indices
 from scripts.compare_missed_detections import unmatched_indices
 
@@ -38,6 +42,34 @@ class CompareMissedDetectionsTest(unittest.TestCase):
         label = Box(0, (0, 0, 10, 10))
         prediction = Box(1, (0, 0, 10, 10), 0.99)
         self.assertEqual(({0}, {0}), unmatched_indices([label], [prediction], 0.5))
+
+    def test_provenance_survives_train_validation_split(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            dataset = Path(temporary_directory)
+            with (dataset / "provenance.csv").open(
+                "w", encoding="utf-8", newline=""
+            ) as output_file:
+                writer = csv.DictWriter(
+                    output_file,
+                    fieldnames=["image", "task_id", "task_name", "job_ids"],
+                )
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "image": "train/frame-1.jpg",
+                        "task_id": "12",
+                        "task_name": "LEGO batch",
+                        "job_ids": "34",
+                    }
+                )
+
+            provenance = load_provenance(dataset)
+            result = provenance_for_image(
+                provenance, "val", Path("frame-1.jpg")
+            )
+            self.assertIsNotNone(result)
+            self.assertEqual("12", result.task_id)
+            self.assertEqual("34", result.job_ids)
 
 
 if __name__ == "__main__":

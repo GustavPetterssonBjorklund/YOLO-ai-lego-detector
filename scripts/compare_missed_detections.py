@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Iterable
 
 
@@ -18,6 +18,13 @@ class Box:
     class_id: int
     xyxy: tuple[float, float, float, float]
     confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class Provenance:
+    task_id: str = ""
+    task_name: str = ""
+    job_ids: str = ""
 
 
 def parse_args() -> argparse.Namespace:
@@ -214,23 +221,75 @@ def add_header(image: Any, title: str) -> Any:
     return np.vstack((header, image))
 
 
-def add_filename_header(image: Any, filename: str) -> Any:
+def add_filename_header(image: Any, filename: str, provenance: Provenance | None) -> Any:
     import cv2
     import numpy as np
 
-    header_height = 46
+    header_height = 76
     header = np.full((header_height, image.shape[1], 3), 20, dtype=image.dtype)
     cv2.putText(
         header,
         f"IMAGE: {filename}",
-        (12, 31),
+        (12, 29),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.75,
         (255, 255, 255),
         2,
         cv2.LINE_AA,
     )
+    if provenance is None:
+        provenance_text = "CVAT TASK / JOB: unavailable (re-export dataset for provenance)"
+    else:
+        task = f"{provenance.task_id} ({provenance.task_name})".strip()
+        provenance_text = f"CVAT TASK: {task}    JOB: {provenance.job_ids or 'unknown'}"
+    cv2.putText(
+        header,
+        provenance_text,
+        (12, 60),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (210, 210, 210),
+        1,
+        cv2.LINE_AA,
+    )
     return np.vstack((header, image))
+
+
+def load_provenance(dataset: Path) -> dict[str, Provenance]:
+    manifest = dataset / "provenance.csv"
+    if not manifest.is_file():
+        return {}
+
+    provenance: dict[str, Provenance] = {}
+    basenames: dict[str, list[Provenance]] = {}
+    with manifest.open(encoding="utf-8", newline="") as input_file:
+        for row in csv.DictReader(input_file):
+            image = row.get("image", "").replace("\\", "/").lstrip("./")
+            if not image or not row.get("task_id"):
+                continue
+            value = Provenance(
+                task_id=row.get("task_id", ""),
+                task_name=row.get("task_name", ""),
+                job_ids=row.get("job_ids", ""),
+            )
+            provenance[image] = value
+            basenames.setdefault(PurePath(image).name, []).append(value)
+
+    for basename, values in basenames.items():
+        if len(values) == 1:
+            provenance.setdefault(basename, values[0])
+    return provenance
+
+
+def provenance_for_image(
+    provenance: dict[str, Provenance], split: str, relative_path: Path
+) -> Provenance | None:
+    candidates = (
+        f"{split}/{relative_path.as_posix()}",
+        relative_path.as_posix(),
+        relative_path.name,
+    )
+    return next((provenance[key] for key in candidates if key in provenance), None)
 
 
 def find_images(dataset: Path) -> list[tuple[str, Path]]:
@@ -275,6 +334,7 @@ def run(args: argparse.Namespace) -> None:
         raise SystemExit(f"No train or validation images found under {dataset}")
 
     names = load_class_names(dataset / "data.yaml")
+    provenance = load_provenance(dataset)
     args.output.mkdir(parents=True, exist_ok=True)
     model = YOLO(str(args.model.resolve()))
     results = prediction_results(model, (path for _, path in images), args)
@@ -300,6 +360,7 @@ def run(args: argparse.Namespace) -> None:
             continue
 
         affected_images += 1
+        image_provenance = provenance_for_image(provenance, split, relative_path)
         ground_truth = add_header(
             draw_boxes(image, labels, names, unmatched=missed),
             f"DATASET LABELS - {len(missed)} UNDETECTED IN RED",
@@ -309,7 +370,9 @@ def run(args: argparse.Namespace) -> None:
             f"MODEL OUTPUT - {len(extra)} UNLABELLED IN RED",
         )
         comparison = np.hstack((ground_truth, model_output))
-        comparison = add_filename_header(comparison, f"{split}/{relative_path}")
+        comparison = add_filename_header(
+            comparison, f"{split}/{relative_path}", image_provenance
+        )
         destination = args.output / split / relative_path.with_suffix(".jpg")
         destination.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(destination), comparison):
@@ -329,6 +392,9 @@ def run(args: argparse.Namespace) -> None:
                 "missed_classes": "; ".join(missed_names),
                 "unlabelled_prediction_count": len(extra),
                 "unlabelled_prediction_classes": "; ".join(extra_names),
+                "cvat_task_id": image_provenance.task_id if image_provenance else "",
+                "cvat_task_name": image_provenance.task_name if image_provenance else "",
+                "cvat_job_ids": image_provenance.job_ids if image_provenance else "",
                 "comparison": str(destination.relative_to(args.output)),
             }
         )
@@ -343,6 +409,9 @@ def run(args: argparse.Namespace) -> None:
         "missed_classes",
         "unlabelled_prediction_count",
         "unlabelled_prediction_classes",
+        "cvat_task_id",
+        "cvat_task_name",
+        "cvat_job_ids",
         "comparison",
     ]
     with summary_path.open("w", encoding="utf-8", newline="") as output_file:

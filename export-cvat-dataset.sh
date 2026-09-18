@@ -8,16 +8,18 @@ PROJECT_ROOT="$(cd -- "$PROJECT_ROOT" && pwd)"
 ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-$PROJECT_ROOT/artifacts}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-$ARTIFACTS_ROOT/exports}"
 CVAT_CLI="${CVAT_CLI:-$PROJECT_ROOT/.venv/bin/cvat-cli}"
+CVAT_PYTHON="${CVAT_PYTHON:-$PROJECT_ROOT/.venv/bin/python}"
 CVAT_URL="${CVAT_URL:-https://cvat.spetsen.se}"
 CVAT_USERNAME="${CVAT_USERNAME:-gustav.pettersson.bjorklund}"
 CVAT_ORG="${CVAT_ORG:-Hitachigym}"
 CVAT_PROJECT_ID="${CVAT_PROJECT_ID:-2}"
 CVAT_FORMAT="${CVAT_FORMAT:-Ultralytics YOLO Detection 1.0}"
+PROVENANCE_SCRIPT="${PROVENANCE_SCRIPT:-$PROJECT_ROOT/scripts/export_cvat_provenance.py}"
 
 # Make all relative overrides deterministic and repository-relative.
 cd "$PROJECT_ROOT"
 
-if [[ ! -x "$CVAT_CLI" ]]; then
+if [[ ! -x "$CVAT_CLI" || ! -x "$CVAT_PYTHON" ]]; then
     printf 'Error: CVAT CLI not found at %s\n' "$CVAT_CLI" >&2
     printf 'Run %s/install.sh first.\n' "$PROJECT_ROOT" >&2
     exit 1
@@ -58,10 +60,22 @@ printf 'Exporting CVAT project %s...\n' "$CVAT_PROJECT_ID"
 unzip -tq "$archive_path" >/dev/null
 unzip -q "$archive_path" -d "$dataset_dir"
 
+if [[ -f "$PROVENANCE_SCRIPT" ]]; then
+    printf 'Recording CVAT task and job provenance...\n'
+    "$CVAT_PYTHON" "$PROVENANCE_SCRIPT" \
+        --host "$CVAT_URL" \
+        --username "$CVAT_USERNAME" \
+        --organization "$CVAT_ORG" \
+        --project-id "$CVAT_PROJECT_ID" \
+        --dataset "$dataset_dir" \
+        --output "$dataset_dir/provenance.csv"
+fi
+
 # Point "latest" at the newest extracted snapshot without deleting older ones.
 ln -sfn "datasets/$(basename "$dataset_dir")" "${OUTPUT_ROOT}/latest"
 
 printf '\nExport complete.\n'
 printf 'Archive: %s\n' "$archive_path"
 printf 'Dataset: %s\n' "$dataset_dir"
+printf 'Provenance: %s/provenance.csv\n' "$dataset_dir"
 printf 'Latest:  %s/latest\n' "$OUTPUT_ROOT"

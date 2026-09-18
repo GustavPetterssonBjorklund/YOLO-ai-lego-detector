@@ -59,3 +59,8 @@ class and at least `MATCH_IOU=0.50` overlap. Unmatched boxes on either side are
 shown in red, making both missed detections and potentially missing/incorrect
 dataset annotations visible. `CONF`, `MATCH_IOU`, `DEVICE`, `MODEL`, `DATASET`,
 and `OUTPUT_DIR` can be overridden through environment variables.
+
+Fresh CVAT exports also contain `provenance.csv`, generated from CVAT's API.
+Comparison images and their summary rows use it to show the originating CVAT
+task name/ID and job ID. Datasets exported before this manifest was added must
+be exported again before task and job information is available.
