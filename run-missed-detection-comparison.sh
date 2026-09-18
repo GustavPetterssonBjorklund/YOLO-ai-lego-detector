@@ -7,6 +7,7 @@ PROJECT_ROOT="$(cd -- "$PROJECT_ROOT" && pwd)"
 ARTIFACTS_ROOT="${ARTIFACTS_ROOT:-$PROJECT_ROOT/artifacts}"
 RUNS_ROOT="${RUNS_ROOT:-$ARTIFACTS_ROOT/runs}"
 TRAINING_ROOT="${TRAINING_ROOT:-$ARTIFACTS_ROOT/training-data}"
+EXPORT_ROOT="${EXPORT_ROOT:-$ARTIFACTS_ROOT/exports}"
 COMPARISONS_ROOT="${COMPARISONS_ROOT:-$ARTIFACTS_ROOT/missed-comparisons}"
 YOLO_VENV="${YOLO_VENV:-$PROJECT_ROOT/.venv}"
 INSTALL_SCRIPT="${INSTALL_SCRIPT:-$PROJECT_ROOT/install.sh}"
@@ -58,8 +59,20 @@ fi
 if [[ -n "${DATASET:-}" ]]; then
     dataset_dir="$DATASET"
 else
-    if ! data_yaml="$(newest_file "$TRAINING_ROOT" data.yaml)"; then
-        printf 'Error: no prepared dataset found below %s\n' "$TRAINING_ROOT" >&2
+    training_yaml="$(newest_file "$TRAINING_ROOT" data.yaml || true)"
+    if [[ -f "$EXPORT_ROOT/latest/data.yaml" ]]; then
+        export_yaml="$EXPORT_ROOT/latest/data.yaml"
+    else
+        export_yaml="$(newest_file "$EXPORT_ROOT/datasets" data.yaml || true)"
+    fi
+    if [[ -n "$export_yaml" ]]; then
+        data_yaml="$export_yaml"
+    else
+        data_yaml="$training_yaml"
+    fi
+    if [[ -z "$data_yaml" ]]; then
+        printf 'Error: no dataset found below %s or %s\n' \
+            "$TRAINING_ROOT" "$EXPORT_ROOT/datasets" >&2
         printf 'Set DATASET to select one explicitly.\n' >&2
         exit 1
     fi
@@ -84,6 +97,11 @@ mkdir -p "$output_dir"
 
 printf 'Model:   %s\n' "$model_path"
 printf 'Dataset: %s\n' "$dataset_dir"
+if [[ -f "$dataset_dir/provenance.csv" ]]; then
+    printf 'CVAT provenance: %s\n' "$dataset_dir/provenance.csv"
+else
+    printf 'Warning: selected dataset has no provenance.csv; task/job will be unavailable.\n' >&2
+fi
 printf 'Output:  %s\n' "$output_dir"
 
 arguments=(

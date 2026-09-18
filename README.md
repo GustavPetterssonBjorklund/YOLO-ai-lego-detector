@@ -48,7 +48,7 @@ script can be overridden with environment variables.
 ## Missed-detection comparisons
 
 Run `./run-missed-detection-comparison.sh` to find the newest trained
-`best.pt` and prepared dataset, evaluate every train and validation image, and
+`best.pt` and newest CVAT export or prepared dataset, evaluate every train and validation image, and
 write side-by-side ground-truth/model images for examples containing missed
 objects or model predictions without matching dataset labels. The output and a
 `summary.csv` are written below

@@ -344,6 +344,7 @@ def run(args: argparse.Namespace) -> None:
     total_missed = 0
     total_extra = 0
     affected_images = 0
+    provenance_matches = 0
 
     for (split, image_path), result in zip(images, results, strict=True):
         image = result.orig_img
@@ -353,6 +354,9 @@ def run(args: argparse.Namespace) -> None:
         labels = load_labels(label_path, width, height)
         predictions = predictions_from_result(result)
         missed, extra = unmatched_indices(labels, predictions, args.match_iou)
+        image_provenance = provenance_for_image(provenance, split, relative_path)
+        if image_provenance is not None:
+            provenance_matches += 1
         total_labels += len(labels)
         total_missed += len(missed)
         total_extra += len(extra)
@@ -360,7 +364,6 @@ def run(args: argparse.Namespace) -> None:
             continue
 
         affected_images += 1
-        image_provenance = provenance_for_image(provenance, split, relative_path)
         ground_truth = add_header(
             draw_boxes(image, labels, names, unmatched=missed),
             f"DATASET LABELS - {len(missed)} UNDETECTED IN RED",
@@ -424,6 +427,10 @@ def run(args: argparse.Namespace) -> None:
     print(f"Missed objects: {total_missed}")
     print(f"Predictions without matching labels: {total_extra}")
     print(f"Images requiring review: {affected_images}")
+    if (dataset / "provenance.csv").is_file():
+        print(f"CVAT provenance matched: {provenance_matches}/{len(images)} images")
+    else:
+        print("CVAT provenance: unavailable (provenance.csv not found)")
 
 
 def main() -> None:
