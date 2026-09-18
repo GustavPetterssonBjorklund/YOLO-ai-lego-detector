@@ -103,5 +103,5 @@ fi
 "$YOLO_VENV/bin/python" "${arguments[@]}"
 
 printf '\nComparison complete.\n'
-printf 'Missed examples: %s\n' "$output_dir"
+printf 'Review examples: %s\n' "$output_dir"
 printf 'Summary:         %s/summary.csv\n' "$output_dir"

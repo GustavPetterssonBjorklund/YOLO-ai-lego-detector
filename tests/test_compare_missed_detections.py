@@ -2,6 +2,7 @@ import unittest
 
 from scripts.compare_missed_detections import Box, intersection_over_union
 from scripts.compare_missed_detections import missed_ground_truth_indices
+from scripts.compare_missed_detections import unmatched_indices
 
 
 class CompareMissedDetectionsTest(unittest.TestCase):
@@ -26,6 +27,17 @@ class CompareMissedDetectionsTest(unittest.TestCase):
         label = Box(0, (0, 0, 10, 10))
         prediction = Box(0, (0, 0, 10, 10), 0.99)
         self.assertEqual(set(), missed_ground_truth_indices([label], [prediction], 1.0))
+
+    def test_prediction_without_a_label_is_reported(self) -> None:
+        prediction = Box(0, (0, 0, 10, 10), 0.99)
+        missed, extra = unmatched_indices([], [prediction], 0.5)
+        self.assertEqual(set(), missed)
+        self.assertEqual({0}, extra)
+
+    def test_wrong_class_is_unmatched_on_both_sides(self) -> None:
+        label = Box(0, (0, 0, 10, 10))
+        prediction = Box(1, (0, 0, 10, 10), 0.99)
+        self.assertEqual(({0}, {0}), unmatched_indices([label], [prediction], 0.5))
 
 
 if __name__ == "__main__":

@@ -50,9 +50,9 @@ def intersection_over_union(left: Box, right: Box) -> float:
     return intersection / union if union else 0.0
 
 
-def missed_ground_truth_indices(
+def unmatched_indices(
     labels: list[Box], predictions: list[Box], minimum_iou: float
-) -> set[int]:
+) -> tuple[set[int], set[int]]:
     """Class-aware, one-to-one greedy matching, highest IoU first."""
     candidates = sorted(
         (
@@ -72,7 +72,17 @@ def missed_ground_truth_indices(
             continue
         matched_labels.add(label_index)
         matched_predictions.add(prediction_index)
-    return set(range(len(labels))) - matched_labels
+    return (
+        set(range(len(labels))) - matched_labels,
+        set(range(len(predictions))) - matched_predictions,
+    )
+
+
+def missed_ground_truth_indices(
+    labels: list[Box], predictions: list[Box], minimum_iou: float
+) -> set[int]:
+    """Return labels without a matching prediction."""
+    return unmatched_indices(labels, predictions, minimum_iou)[0]
 
 
 def load_class_names(data_yaml: Path) -> dict[int, str]:
@@ -146,19 +156,20 @@ def draw_boxes(
     boxes: list[Box],
     names: dict[int, str],
     *,
-    missed: set[int] | None = None,
+    unmatched: set[int] | None = None,
 ) -> Any:
     import cv2
 
     rendered = image.copy()
-    missed = missed or set()
+    unmatched = unmatched or set()
     for index, box in enumerate(boxes):
         x1, y1, x2, y2 = (round(value) for value in box.xyxy)
-        color = (0, 0, 255) if index in missed else (0, 190, 0)
+        color = (0, 0, 255) if index in unmatched else (0, 190, 0)
         caption = class_name(box.class_id, names)
         if box.confidence is not None:
             caption = f"{caption} {box.confidence:.2f}"
-            color = (255, 140, 0)
+            if index not in unmatched:
+                color = (255, 140, 0)
         cv2.rectangle(rendered, (x1, y1), (x2, y2), color, 2)
         (text_width, text_height), baseline = cv2.getTextSize(
             caption, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1
@@ -252,6 +263,7 @@ def run(args: argparse.Namespace) -> None:
     rows: list[dict[str, str | int]] = []
     total_labels = 0
     total_missed = 0
+    total_extra = 0
     affected_images = 0
 
     for (split, image_path), result in zip(images, results, strict=True):
@@ -261,20 +273,21 @@ def run(args: argparse.Namespace) -> None:
         label_path = dataset / "labels" / split / relative_path.with_suffix(".txt")
         labels = load_labels(label_path, width, height)
         predictions = predictions_from_result(result)
-        missed = missed_ground_truth_indices(labels, predictions, args.match_iou)
+        missed, extra = unmatched_indices(labels, predictions, args.match_iou)
         total_labels += len(labels)
         total_missed += len(missed)
-        if not missed:
+        total_extra += len(extra)
+        if not missed and not extra:
             continue
 
         affected_images += 1
         ground_truth = add_header(
-            draw_boxes(image, labels, names, missed=missed),
-            f"DATASET LABELS - {len(missed)} MISSED IN RED",
+            draw_boxes(image, labels, names, unmatched=missed),
+            f"DATASET LABELS - {len(missed)} UNDETECTED IN RED",
         )
         model_output = add_header(
-            draw_boxes(image, predictions, names),
-            f"MODEL OUTPUT - conf >= {args.conf:g}",
+            draw_boxes(image, predictions, names, unmatched=extra),
+            f"MODEL OUTPUT - {len(extra)} UNLABELLED IN RED",
         )
         comparison = np.hstack((ground_truth, model_output))
         destination = args.output / split / relative_path.with_suffix(".jpg")
@@ -283,6 +296,9 @@ def run(args: argparse.Namespace) -> None:
             raise SystemExit(f"Could not write comparison image: {destination}")
 
         missed_names = sorted(class_name(labels[index].class_id, names) for index in missed)
+        extra_names = sorted(
+            class_name(predictions[index].class_id, names) for index in extra
+        )
         rows.append(
             {
                 "split": split,
@@ -291,6 +307,8 @@ def run(args: argparse.Namespace) -> None:
                 "prediction_count": len(predictions),
                 "missed_count": len(missed),
                 "missed_classes": "; ".join(missed_names),
+                "unlabelled_prediction_count": len(extra),
+                "unlabelled_prediction_classes": "; ".join(extra_names),
                 "comparison": str(destination.relative_to(args.output)),
             }
         )
@@ -303,6 +321,8 @@ def run(args: argparse.Namespace) -> None:
         "prediction_count",
         "missed_count",
         "missed_classes",
+        "unlabelled_prediction_count",
+        "unlabelled_prediction_classes",
         "comparison",
     ]
     with summary_path.open("w", encoding="utf-8", newline="") as output_file:
@@ -313,7 +333,8 @@ def run(args: argparse.Namespace) -> None:
     print(f"Images checked: {len(images)}")
     print(f"Ground-truth objects: {total_labels}")
     print(f"Missed objects: {total_missed}")
-    print(f"Images with misses: {affected_images}")
+    print(f"Predictions without matching labels: {total_extra}")
+    print(f"Images requiring review: {affected_images}")
 
 
 def main() -> None:

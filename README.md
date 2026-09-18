@@ -50,9 +50,12 @@ script can be overridden with environment variables.
 Run `./run-missed-detection-comparison.sh` to find the newest trained
 `best.pt` and prepared dataset, evaluate every train and validation image, and
 write side-by-side ground-truth/model images for examples containing missed
-objects. The output and a `summary.csv` are written below
+objects or model predictions without matching dataset labels. The output and a
+`summary.csv` are written below
 `artifacts/missed-comparisons/`.
 
-A ground-truth object counts as found when a prediction of the same class has
-at least `MATCH_IOU=0.50` overlap. `CONF`, `MATCH_IOU`, `DEVICE`, `MODEL`,
-`DATASET`, and `OUTPUT_DIR` can be overridden through environment variables.
+A ground-truth object and prediction count as matched when they have the same
+class and at least `MATCH_IOU=0.50` overlap. Unmatched boxes on either side are
+shown in red, making both missed detections and potentially missing/incorrect
+dataset annotations visible. `CONF`, `MATCH_IOU`, `DEVICE`, `MODEL`, `DATASET`,
+and `OUTPUT_DIR` can be overridden through environment variables.
