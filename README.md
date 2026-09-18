@@ -44,3 +44,15 @@ Run `./run-lego-yolo-pipeline.sh` to optionally export the configured CVAT
 project, prepare a class-preserving train/validation split, train YOLO, and
 write predictions below `artifacts/`. Configuration values at the top of the
 script can be overridden with environment variables.
+
+## Missed-detection comparisons
+
+Run `./run-missed-detection-comparison.sh` to find the newest trained
+`best.pt` and prepared dataset, evaluate every train and validation image, and
+write side-by-side ground-truth/model images for examples containing missed
+objects. The output and a `summary.csv` are written below
+`artifacts/missed-comparisons/`.
+
+A ground-truth object counts as found when a prediction of the same class has
+at least `MATCH_IOU=0.50` overlap. `CONF`, `MATCH_IOU`, `DEVICE`, `MODEL`,
+`DATASET`, and `OUTPUT_DIR` can be overridden through environment variables.
